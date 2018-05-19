@@ -42,6 +42,7 @@ kinit1(void *vstart, void *vend)
 void
 kinit2(void *vstart, void *vend)
 {
+  system_max_free_pages = (vend - vstart)/PGSIZE;
   freerange(vstart, vend);
   kmem.use_lock = 1;
 }
