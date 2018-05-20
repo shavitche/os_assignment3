@@ -12,7 +12,7 @@ exec(char *path, char **argv)
 {
   struct proc *curproc = myproc();
 
-#if defined (LIFO) || defined (SCFIFO) || defined (LAP)
+#if defined (LIFO) || defined (SCFIFO) || defined (LAP) || defined(AQ) || defined(LAPA)
     // MINE:
     curproc->page_fault_counter = 0;
     curproc->pageout_counter = 0;
@@ -24,6 +24,8 @@ exec(char *path, char **argv)
         for(i = 0; i < MAX_TOTAL_PAGES; i++){
             curproc->page_descriptions[i].virtual_address = 777;
             curproc->page_descriptions[i].access_counter = 0;
+            curproc->page_descriptions[i].page_queue_counter = -1;
+            curproc->page_descriptions[i].aging_bol_counter = 0;
             curproc->page_descriptions[i].status = PG_UNSUED;
             curproc->page_descriptions[i].pte = 0;
             curproc->page_descriptions[i].swap_file_offset = -1;

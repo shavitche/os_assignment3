@@ -203,6 +203,10 @@ int 			choose_page_to_swapFile(struct proc*);
 void 			swap_out_page(struct proc*);
 void 			pgflt_handler(struct proc*, uint);
 pte_t*          walkpgdir(pde_t *pgdir, const void *va, int alloc);
+                // TODO delete lap_update
 void            lap_update();
+void            aq_update();
+void            LAPA_update();
+
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))

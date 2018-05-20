@@ -127,6 +127,8 @@ found:
     p->page_descriptions[page_index].virtual_address = 0;
     p->page_descriptions[page_index].status = PG_UNSUED;
     p->page_descriptions[page_index].access_counter = 0;
+    p->page_descriptions[page_index].page_queue_counter = -1;
+    p->page_descriptions[page_index].aging_bol_counter = 0;
     p->page_descriptions[page_index].swap_file_offset = -1;
     p->page_descriptions[page_index].next = (struct page_description*) 0;
     p->page_descriptions[page_index].prev = (struct page_description*) 0;
@@ -251,6 +253,7 @@ fork(void)
     for(i = 0; i < MAX_TOTAL_PAGES; i++){
       np->page_descriptions[i].swap_file_offset = curproc->page_descriptions[i].swap_file_offset;
       np->page_descriptions[i].access_counter = 0;
+      np->page_descriptions[i].page_queue_counter = curproc->page_descriptions[i].page_queue_counter;
       np->page_descriptions[i].status = curproc->page_descriptions[i].status;
       np->page_descriptions[i].virtual_address = curproc->page_descriptions[i].virtual_address;
       np->page_descriptions[i].pte = walkpgdir(np->pgdir, (char *)PGROUNDDOWN(np->page_descriptions[i].virtual_address), 0);
@@ -341,7 +344,8 @@ exit(void)
   if(curproc == initproc)
     panic("init exiting");
 
-  // Close all open files.
+  removeSwapFile(curproc);
+    // Close all open files.
   for(fd = 0; fd < NOFILE; fd++){
     if(curproc->ofile[fd]){
       fileclose(curproc->ofile[fd]);
@@ -357,7 +361,7 @@ exit(void)
 
 
 #ifdef TRUE
-  #if defined (LIFO) || defined (SCFIFO) || defined (LAP)
+  #if defined (LIFO) || defined (SCFIFO) || defined (LAP) || defined(AQ) || defined(LAPA)
     int number_of_pages_in_memory = get_number_of_pages_in_memory(proc);
     int number_of_pages_in_swapfile = get_number_of_pages_in_swapfile(proc);
     cprintf("%d %s %d %d %d %d %s \n",
@@ -737,7 +741,25 @@ insert_page_description(struct proc *p, uint *pte, uint va) {
       p->page_descriptions[i].virtual_address = va;
       p->page_descriptions[i].swap_file_offset = -1;
       p->page_descriptions[i].access_counter = 0;
+      p->page_descriptions[i].page_queue_counter = i;
+      p->page_descriptions[i].aging_bol_counter = 0;
       insert_page_to_linked_list(p, i);
+//      cprintf("i is: %d\n", i);
+      if(i>15) {
+        // Add +1 to all other in memory pages except the current index which will be the first
+        for (int j = 0; j < MAX_TOTAL_PAGES; j++) {
+          if (p->page_descriptions[j].status == PG_MUST_MEM) {
+            continue;
+          }
+          if (p->page_descriptions[j].status == PG_MEMORY) {
+            if (j != i) {
+              p->page_descriptions[j].page_queue_counter++;
+            } else {
+              p->page_descriptions[j].page_queue_counter = 0;
+            }
+          }
+        }
+      }
       return 0;
     }
   }

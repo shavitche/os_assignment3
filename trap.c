@@ -36,7 +36,7 @@ idtinit(void)
 void
 trap(struct trapframe *tf)
 {
-#if defined (LIFO) || defined (SCFIFO) || defined (LAP)
+#if defined (LIFO) || defined (SCFIFO) || defined (LAP) || defined(AQ) || defined(LAPA)
   uint va_fault;
 #endif
   if(tf->trapno == T_SYSCALL){
@@ -53,7 +53,16 @@ trap(struct trapframe *tf)
   case T_IRQ0 + IRQ_TIMER:
     if(cpuid() == 0){
       acquire(&tickslock);
+      // TODO: delete lap_update
+#if defined (LAP)
       lap_update();
+#endif
+#if defined(AQ)
+      aq_update();
+#endif
+#if defined(LAPA)
+      LAPA_update();
+#endif
       ticks++;
       wakeup(&ticks);
       release(&tickslock);
@@ -82,9 +91,8 @@ trap(struct trapframe *tf)
     lapiceoi();
     break;
   case T_PGFLT:
-      #if defined (LIFO) || defined (SCFIFO) || defined (LAP)
+      #if defined (LIFO) || defined (SCFIFO) || defined (LAP) || defined(AQ) || defined(LAPA)
       va_fault = rcr2();
-      cprintf("LALALALAL\n");
       pgflt_handler(myproc(),va_fault);
       #endif
       break;

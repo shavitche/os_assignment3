@@ -224,6 +224,7 @@ void swap_out_page(struct proc* p){
   int index_of_swapped_out_page = choose_page_to_swapFile(p);
   if (index_of_swapped_out_page != -1) {
     // cprintf("chose index, va: %x\n", p->page_descriptions[index_of_swapped_out_page].virtual_address);
+
     pte_t *pte_of_swapped_out_page = walkpgdir(p->pgdir,
                                                (char *) PGROUNDDOWN(
                                                        p->page_descriptions[index_of_swapped_out_page].virtual_address),
@@ -245,6 +246,7 @@ void swap_out_page(struct proc* p){
     *pte_of_swapped_out_page = *pte_of_swapped_out_page & ~PTE_P;
     *pte_of_swapped_out_page = *pte_of_swapped_out_page | PTE_PG;
     kfree(mem);
+      // TODO: understand this lcr3
     lcr3(v2p(p->pgdir));
 
     remove_page_from_linked_list(p, index_of_swapped_out_page);
@@ -519,6 +521,7 @@ pgflt_handler(struct proc* p, uint va_fault){
   pte_of_incoming_page = walkpgdir(p->pgdir, (char*)p->page_descriptions[index_of_incoming_page].virtual_address, 0);
   p->page_descriptions[index_of_incoming_page].swap_file_offset = -1;
   p->page_descriptions[index_of_incoming_page].status = PG_MEMORY;
+  p->page_descriptions[index_of_incoming_page].aging_bol_counter = 0;
   *pte_of_incoming_page = *pte_of_incoming_page & ~PTE_PG;
 
   cprintf("Read and mapped va: %x from: %d\n",
@@ -610,6 +613,216 @@ int choose_by_SCFIFO(struct proc* p){
   return i;
 }
 
+int choose_by_AQ(struct proc* p) {
+  int i;
+  int chosen = -1;
+  int biggest_queue_count = -1;
+  int must_mem_counter = 0;
+  for(i = 0; i < MAX_TOTAL_PAGES; i++){
+    if(p->page_descriptions[i].status == PG_MUST_MEM){
+      must_mem_counter++;
+      continue;
+    }
+    if(p->page_descriptions[i].status == PG_MEMORY){
+      // cprintf("LAP: looking at va: %x\n", p->page_descriptions[i].virtual_address);
+      if(biggest_queue_count == -1 || p->page_descriptions[i].page_queue_counter > biggest_queue_count){
+        biggest_queue_count = p->page_descriptions[i].page_queue_counter;
+        chosen = i;
+//        cprintf("chosen is : %d  ,biggest count is %d\n", chosen,biggest_queue_count);
+
+      }
+    }
+  }
+//   cprintf("chosen is : %d\n", chosen);
+
+  // Add +1 to all other in memory pages except the current index which will be the first
+//  for(i = 0; i < MAX_TOTAL_PAGES; i++){
+//    if(p->page_descriptions[i].status == PG_MUST_MEM){
+//      continue;
+//    }
+//    if(p->page_descriptions[i].status == PG_MEMORY){
+//      if (i != chosen) {
+//        p->page_descriptions[i].page_queue_counter++;
+//      }
+//      else{
+//        p->page_descriptions[i].page_queue_counter = must_mem_counter;
+//      }
+//    }
+//  }
+  return chosen;
+}
+
+// Get number of ones in the number
+//unsigned int countSetBits(unsigned int n)
+//{
+//  unsigned int count = 0;
+//  while (n)
+//  {
+//    count += n & 1;
+//    n >>= 1;
+//  }
+//  return count;
+//}
+
+int countSetBits(unsigned int value) {
+  int count;
+  for (count = 0; value != 0; count++, value &= value-1);
+  return count;
+}
+
+int choose_by_LAPA(struct proc* p) {
+//  int chosen = -1;
+  int least_accessed = -1;
+  int smallest_ones = -1;
+
+
+  struct proc *proc = myproc();
+
+  struct page_description *chosen_swaped_out_page_description;
+  struct page_description *swaped_out_page_description;
+//  pte_t *pte_to_swap_out;
+  int i;
+
+  // Pick the page that was inserted first to memory and has access bit 0
+  swaped_out_page_description = proc->tail;
+  chosen_swaped_out_page_description = proc->tail;
+  while (1) {
+    if (swaped_out_page_description->status == PG_MUST_MEM) {
+      swaped_out_page_description = swaped_out_page_description->prev;
+      continue;
+    }
+    // if the page is not in swapfile
+    if (swaped_out_page_description->status == PG_MEMORY) {
+//      pte_to_swap_out = walkpgdir(p->pgdir, (void *) swaped_out_page_description->virtual_address, 0);
+
+      // First page case
+      if (smallest_ones == -1) {
+        smallest_ones = countSetBits(swaped_out_page_description->aging_bol_counter);
+        least_accessed = swaped_out_page_description->access_counter;
+        chosen_swaped_out_page_description = swaped_out_page_description;
+        cprintf("Chosen in 1\n");
+        continue;
+      }
+
+      // case of tie
+      if (countSetBits(swaped_out_page_description->aging_bol_counter) == smallest_ones) {
+        // If tie, pick by smallest access counter
+        if (swaped_out_page_description->access_counter < least_accessed) {
+          least_accessed = swaped_out_page_description->access_counter;
+          chosen_swaped_out_page_description = swaped_out_page_description;
+          cprintf("Chosen in 2\n");
+        }
+      }
+
+      // Try to find page with less 1's
+      if (countSetBits(swaped_out_page_description->aging_bol_counter) < smallest_ones) {
+        smallest_ones = countSetBits(swaped_out_page_description->aging_bol_counter);
+        least_accessed = swaped_out_page_description->access_counter;
+        chosen_swaped_out_page_description = swaped_out_page_description;
+        cprintf("Chosen in 3\n");
+      }
+    }
+
+    swaped_out_page_description = swaped_out_page_description->prev;
+    if (swaped_out_page_description == 0) {
+      break;
+      // reached end of list, go over
+      swaped_out_page_description = proc->tail;
+    }
+  } // end of while
+
+  // search for the index of the chosen page
+  for (i = 0; i < MAX_TOTAL_PAGES; i++) {
+    if (p->page_descriptions[i].status == PG_MEMORY &&
+        p->page_descriptions[i].virtual_address == chosen_swaped_out_page_description->virtual_address) {
+      break;
+    }
+  }
+  return i;
+
+}
+
+
+
+
+//
+//  for(i = 0; i < MAX_TOTAL_PAGES; i++){
+//    if(p->page_descriptions[i].status == PG_MEMORY){
+////      cprintf("LAP: looking at va: %x\n", p->page_descriptions[i].virtual_address);
+//
+//      // First page case
+//      if (smallest_ones == -1){
+//        smallest_ones = countSetBits(p->page_descriptions[i].aging_bol_counter);
+//        least_accessed = p->page_descriptions[i].access_counter;
+//        chosen = i;
+//        cprintf("Chosen in 1\n");
+//        continue;
+//      }
+//
+//      // case of tie
+//      if (countSetBits(p->page_descriptions[i].aging_bol_counter) == smallest_ones) {
+//        // If tie, pick by smallest access counter
+//        if (p->page_descriptions[i].access_counter < least_accessed) {
+//          least_accessed = p->page_descriptions[i].access_counter;
+//          chosen = i;
+//          cprintf("Chosen in 2\n");
+//        }
+//      }
+//
+//      // Try to find page with less 1's
+//      if(countSetBits(p->page_descriptions[i].aging_bol_counter) < smallest_ones) {
+//        smallest_ones = countSetBits(p->page_descriptions[i].aging_bol_counter);
+//        least_accessed = p->page_descriptions[i].access_counter;
+//        chosen = i;
+//        cprintf("Chosen in 3\n");
+//      }
+//    }
+//  }
+//  return chosen;
+//}
+
+
+//int choose_by_LAPA(struct proc* p) {
+//  int i;
+//  int chosen = -1;
+//  int least_accessed = -1;
+//  int smallest_ones = -1;
+//  for(i = 0; i < MAX_TOTAL_PAGES; i++){
+//    if(p->page_descriptions[i].status == PG_MEMORY){
+////      cprintf("LAP: looking at va: %x\n", p->page_descriptions[i].virtual_address);
+//
+//      // First page case
+//      if (smallest_ones == -1){
+//        smallest_ones = countSetBits(p->page_descriptions[i].aging_bol_counter);
+//        least_accessed = p->page_descriptions[i].access_counter;
+//        chosen = i;
+//        cprintf("Chosen in 1\n");
+//        continue;
+//      }
+//
+//      // case of tie
+//      if (countSetBits(p->page_descriptions[i].aging_bol_counter) == smallest_ones) {
+//        // If tie, pick by smallest access counter
+//        if (p->page_descriptions[i].access_counter < least_accessed) {
+//          least_accessed = p->page_descriptions[i].access_counter;
+//          chosen = i;
+//          cprintf("Chosen in 2\n");
+//        }
+//      }
+//
+//      // Try to find page with less 1's
+//      if(countSetBits(p->page_descriptions[i].aging_bol_counter) < smallest_ones) {
+//        smallest_ones = countSetBits(p->page_descriptions[i].aging_bol_counter);
+//        least_accessed = p->page_descriptions[i].access_counter;
+//        chosen = i;
+//        cprintf("Chosen in 3\n");
+//      }
+//    }
+//  }
+//  return chosen;
+//}
+
+
 int
 get_page_lap(struct proc *p){
   int i;
@@ -647,6 +860,57 @@ void lap_update(){
   }
 }
 
+void LAPA_update(){
+  struct proc *proc = myproc();
+  int i;
+  pte_t  *pte;
+  if (proc) {
+
+    for (i = 0; i < MAX_TOTAL_PAGES; i++){
+      if(proc->page_descriptions[i].status == PG_MEMORY){
+        pte = walkpgdir(proc->pgdir, (void *) proc->page_descriptions[i].virtual_address, 0);
+
+        // Shift 1 time to the right (aging)
+        proc->page_descriptions[i].aging_bol_counter >>= 0x1;
+        // if PTE_A bit is on. raise the access_counter by one.
+        if((*pte & PTE_A) != 0){
+          // Add 1 to the begginging if page was used
+          proc->page_descriptions[i].aging_bol_counter |= 0x1 <<7;
+          // Same as lap update
+          proc->page_descriptions[i].access_counter = proc->page_descriptions[i].access_counter + 1;
+
+          // reset  PTE_A
+          *pte &= ~PTE_A;
+
+        }
+      }
+    }
+  }
+}
+
+
+void aq_update(){
+  struct proc *proc = myproc();
+  int i;
+  pte_t  *pte;
+  if (proc) {
+
+    for (i = 0; i < MAX_TOTAL_PAGES; i++){
+      if(proc->page_descriptions[i].status == PG_MEMORY){
+        pte = walkpgdir(proc->pgdir, (void *) proc->page_descriptions[i].virtual_address, 0);
+
+        // if PTE_A bit is on. raise the access_counter by one.
+        if((*pte & PTE_A) != 0){
+          if(i>0) {
+            proc->page_descriptions[i].page_queue_counter = proc->page_descriptions[i].page_queue_counter - 1;
+            proc->page_descriptions[i - 1].page_queue_counter = proc->page_descriptions[i].page_queue_counter + 1;
+          }
+        }
+      }
+    }
+  }
+}
+
 int
 choose_page_to_swapFile(struct proc* p){
 #ifdef NONE
@@ -663,6 +927,14 @@ choose_page_to_swapFile(struct proc* p){
 
 #ifdef LAP
   return get_page_lap(p);
+#endif
+
+#ifdef AQ
+  return choose_by_AQ(p);
+#endif
+
+#ifdef LAPA
+  return choose_by_LAPA(p);
 #endif
 
 }

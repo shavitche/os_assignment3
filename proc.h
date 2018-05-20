@@ -51,6 +51,10 @@ struct page_description {
     int access_counter;             // access_counter of page
     struct page_description *next;  // used for LIFO and SCFIFO
     struct page_description *prev;  // used for LIFO and SCFIFO
+
+    int page_queue_counter;         // used for AQ
+    uint aging_bol_counter;         // used for LAPA
+
 };
 
 
