@@ -24,14 +24,14 @@ test_simple_allocating_data()
 
     //Use the pages
     printf(1, "Going to access the pages\n");
-    for ( i = 0; i < NUM_OF_PAGES; ++i)
-    {
-        printf(1, "Accessing page %d\n", i);
-        for ( j = 0; j < page_size; ++j)
-        {
-            pages_matrix[i][j] = 0;
+        for (i = 0; i < NUM_OF_PAGES; ++i) {
+            printf(1, "Accessing page %d\n", i);
+            for (j = 0; j < page_size; ++j) {
+                pages_matrix[i][j] = 0;
+            }
+            sleep(15); // to get to tick cycle
         }
-    }
+
 
 
     printf(1, "TEST DONE\n");

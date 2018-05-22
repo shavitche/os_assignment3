@@ -126,7 +126,7 @@ found:
     p->page_descriptions[page_index].pte = 0;
     p->page_descriptions[page_index].virtual_address = 0;
     p->page_descriptions[page_index].status = PG_UNSUED;
-    p->page_descriptions[page_index].access_counter = 0;
+    p->page_descriptions[page_index].access_counter = 0xFFFFFFFF;
     p->page_descriptions[page_index].page_queue_counter = -1;
     p->page_descriptions[page_index].aging_bol_counter = 0;
     p->page_descriptions[page_index].swap_file_offset = -1;
@@ -252,7 +252,7 @@ fork(void)
     // Deep copy page descriptions:
     for(i = 0; i < MAX_TOTAL_PAGES; i++){
       np->page_descriptions[i].swap_file_offset = curproc->page_descriptions[i].swap_file_offset;
-      np->page_descriptions[i].access_counter = 0;
+      np->page_descriptions[i].access_counter = 0xFFFFFFFF;
       np->page_descriptions[i].page_queue_counter = curproc->page_descriptions[i].page_queue_counter;
       np->page_descriptions[i].status = curproc->page_descriptions[i].status;
       np->page_descriptions[i].virtual_address = curproc->page_descriptions[i].virtual_address;
@@ -362,16 +362,16 @@ exit(void)
 
 #ifdef TRUE
   #if defined (LIFO) || defined (SCFIFO) || defined (LAP) || defined(AQ) || defined(LAPA)
-    int number_of_pages_in_memory = get_number_of_pages_in_memory(proc);
-    int number_of_pages_in_swapfile = get_number_of_pages_in_swapfile(proc);
+    int number_of_pages_in_memory = get_number_of_pages_in_memory(curproc);
+    int number_of_pages_in_swapfile = get_number_of_pages_in_swapfile(curproc);
     cprintf("%d %s %d %d %d %d %s \n",
-            proc->pid,
+            curproc->pid,
             "ZOMBIE",
             number_of_pages_in_memory,
             number_of_pages_in_swapfile,
-            proc->page_fault_counter,
-            proc->pageout_counter,
-            proc->name);
+            curproc->page_fault_counter,
+            curproc->pageout_counter,
+            curproc->name);
     #endif
     cprintf("%d / %d   free pages in the system\n", (system_max_free_pages - system_used_pages), system_max_free_pages);
 #endif
@@ -740,7 +740,7 @@ insert_page_description(struct proc *p, uint *pte, uint va) {
       p->page_descriptions[i].pte = pte;
       p->page_descriptions[i].virtual_address = va;
       p->page_descriptions[i].swap_file_offset = -1;
-      p->page_descriptions[i].access_counter = 0;
+      p->page_descriptions[i].access_counter = 0xFFFFFFFF;
       p->page_descriptions[i].page_queue_counter = i;
       p->page_descriptions[i].aging_bol_counter = 0;
       insert_page_to_linked_list(p, i);

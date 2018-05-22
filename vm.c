@@ -37,7 +37,6 @@ walkpgdir(pde_t *pgdir, const void *va, int alloc)
 {
   pde_t *pde;
   pte_t *pgtab;
-
   pde = &pgdir[PDX(va)];
   if(*pde & PTE_P){
     pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
@@ -231,6 +230,7 @@ void swap_out_page(struct proc* p){
                                                0);
     // cprintf("got pte\n");
     p->page_descriptions[index_of_swapped_out_page].swap_file_offset = p->next_free_place_in_swapfile;
+//    p->page_descriptions[index_of_swapped_out_page].access_counter = 0xFFFFFFFF;
     uint pa = PTE_ADDR(*pte_of_swapped_out_page);
     // cprintf("got pa\n");
     char *mem = (char *) p2v(pa);
@@ -245,6 +245,7 @@ void swap_out_page(struct proc* p){
     p->page_descriptions[index_of_swapped_out_page].status = PG_SWAPFILE;
     *pte_of_swapped_out_page = *pte_of_swapped_out_page & ~PTE_P;
     *pte_of_swapped_out_page = *pte_of_swapped_out_page | PTE_PG;
+//    *pte_of_swapped_out_page = *pte_of_swapped_out_page & ~PTE_A;
     kfree(mem);
       // TODO: understand this lcr3
     lcr3(v2p(p->pgdir));
@@ -522,7 +523,9 @@ pgflt_handler(struct proc* p, uint va_fault){
   p->page_descriptions[index_of_incoming_page].swap_file_offset = -1;
   p->page_descriptions[index_of_incoming_page].status = PG_MEMORY;
   p->page_descriptions[index_of_incoming_page].aging_bol_counter = 0;
+  p->page_descriptions[index_of_incoming_page].access_counter = 0xFFFFFFFF;
   *pte_of_incoming_page = *pte_of_incoming_page & ~PTE_PG;
+  *pte_of_incoming_page = *pte_of_incoming_page & ~PTE_A;
 
   cprintf("Read and mapped va: %x from: %d\n",
           p->page_descriptions[index_of_incoming_page].virtual_address,
@@ -706,6 +709,7 @@ int choose_by_LAPA(struct proc* p) {
 
       // case of tie
       if (countSetBits(swaped_out_page_description->aging_bol_counter) == smallest_ones) {
+//        cprintf("TIETIETIETIETIETIETIETIETIETIETIETIETIETIETIETIE\n");
         // If tie, pick by smallest access counter
         if (swaped_out_page_description->access_counter < least_accessed) {
           least_accessed = swaped_out_page_description->access_counter;
@@ -865,7 +869,6 @@ void LAPA_update(){
   int i;
   pte_t  *pte;
   if (proc) {
-
     for (i = 0; i < MAX_TOTAL_PAGES; i++){
       if(proc->page_descriptions[i].status == PG_MEMORY){
         pte = walkpgdir(proc->pgdir, (void *) proc->page_descriptions[i].virtual_address, 0);
@@ -878,7 +881,7 @@ void LAPA_update(){
           proc->page_descriptions[i].aging_bol_counter |= 0x1 <<7;
           // Same as lap update
           proc->page_descriptions[i].access_counter = proc->page_descriptions[i].access_counter + 1;
-
+          cprintf("HEHEHEHEHEHEHEHEHEHEHEHEHEHEHEHEHEHEHEHEHEHEHEHEHE Updating access counter in %d \n",i);
           // reset  PTE_A
           *pte &= ~PTE_A;
 

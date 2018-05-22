@@ -23,7 +23,7 @@ exec(char *path, char **argv)
         int i;
         for(i = 0; i < MAX_TOTAL_PAGES; i++){
             curproc->page_descriptions[i].virtual_address = 777;
-            curproc->page_descriptions[i].access_counter = 0;
+            curproc->page_descriptions[i].access_counter = 0xFFFFFFFF;
             curproc->page_descriptions[i].page_queue_counter = -1;
             curproc->page_descriptions[i].aging_bol_counter = 0;
             curproc->page_descriptions[i].status = PG_UNSUED;
